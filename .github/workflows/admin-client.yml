@@ -40,6 +40,7 @@ jobs:
       - name: Add client
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          OPENAI_ADMIN_KEY: ${{ secrets.OPENAI_ADMIN_KEY }}
           IN_NAME: ${{ inputs.name }}
           IN_PID: ${{ inputs.project_id }}
           IN_AMOUNT: ${{ inputs.amount }}

@@ -34,6 +34,7 @@ jobs:
       - name: Update clients.json
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          OPENAI_ADMIN_KEY: ${{ secrets.OPENAI_ADMIN_KEY }}
           IN_CLIENT: ${{ inputs.client }}
           IN_AMOUNT: ${{ inputs.amount }}
           IN_DATE: ${{ inputs.date }}

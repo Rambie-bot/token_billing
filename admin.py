@@ -20,7 +20,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from billing_monitor import fmt_rub, http_post_json, invoiced_total, ddmm
+from billing_monitor import fmt_rub, http_post_json, invoiced_total, ddmm, compute, fetch_costs_by_project, parse_date
 
 CLIENTS_FILE = Path(os.getenv("CLIENTS_FILE", "clients.json"))
 MSK = timezone(timedelta(hours=3))
@@ -89,6 +89,9 @@ def fee_of(cfg, c):
 def cmd_invoice(cfg, a):
     c = migrate(find_client(cfg, a.client))
     amount, date = norm_amount(a.amount), norm_date(a.date)
+    if any(float(i["amount_rub"]) == float(amount) and i["issued"] == date for i in c["invoices"]):
+        raise AdminError(f"Счёт на {fmt_rub(amount)} от {ddmm(date)} у {c['name']} уже внесён. "
+                         "Если это правда второй такой счёт, поставьте другую дату.")
     c["invoices"].append({"amount_rub": amount, "issued": date})
     fee = fee_of(cfg, c)
     return (f":receipt: *{c['name']}*: выставлен счёт на {fmt_rub(amount)} от {ddmm(date)}, "
@@ -119,6 +122,22 @@ def cmd_add_client(cfg, a):
     return f":new: Добавлен клиент *{name}* ({pid}), счёт на {fmt_rub(amount)} от {ddmm(date)}.\n{summary(client, fee_of(cfg, client))}"
 
 
+def balance_line(cfg, name):
+    """Строка с текущим остатком клиента. Если OpenAI недоступен — пусто, подтверждение всё равно уйдёт."""
+    key = os.getenv("OPENAI_ADMIN_KEY")
+    if not key:
+        return ""
+    try:
+        c = find_client(cfg, name)
+        usd = fetch_costs_by_project(key, [c["project_id"]], parse_date(c["period_start"]).timestamp())[c["project_id"]]
+        r = compute(c, cfg.get("defaults", {}), usd)
+        return (f"\nУже потрачено: {fmt_rub(r['spent'])} (${usd:.2f}, курс {r['rate']:.2f})\n"
+                f"*Осталось на токены: {fmt_rub(r['remaining'])}*")
+    except Exception as e:
+        print(f"[warn] не удалось посчитать остаток: {e}", file=sys.stderr)
+        return ""
+
+
 def cmd_pause(cfg, a, enabled):
     c = find_client(cfg, a.client)
     c["enabled"] = enabled
@@ -147,9 +166,9 @@ def main():
     webhook = os.getenv("SLACK_WEBHOOK_URL")
     try:
         if a.cmd == "invoice":
-            msg = cmd_invoice(cfg, a)
+            msg = cmd_invoice(cfg, a) + balance_line(cfg, a.client)
         elif a.cmd == "add-client":
-            msg = cmd_add_client(cfg, a)
+            msg = cmd_add_client(cfg, a) + balance_line(cfg, a.name)
         else:
             msg = cmd_pause(cfg, a, a.cmd == "resume")
     except AdminError as e:
