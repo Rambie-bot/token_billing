@@ -1,0 +1,16 @@
+{
+  "defaults": {
+    "commission_pct": 10,
+    "cbr_multiplier": 1.08,
+    "alert_thresholds_rub": [5000, 0],
+    "slack_mention": ["U0AC5QCKPDF", "U0AL85CV9AM"]
+  },
+  "clients": [
+    {
+      "name": "Займер",
+      "project_id": "proj_7VqULelGQ7AGF9xk7h7Smyxm",
+      "prepaid_rub": 26000,
+      "period_start": "2026-11-01"
+    }
+  ]
+}
