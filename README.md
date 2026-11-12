@@ -1,6 +1,6 @@
 # Billing monitor: расходы OpenAI по клиентам
 
-Каждый день проверяет, сколько из предоплаты клиента ушло на токены OpenAI, и пишет в Slack (#ru_payments), когда бюджет подходит к концу.
+Каждый день проверяет, сколько из выставленных клиенту счетов ушло на токены OpenAI, и пишет в Slack (#ru_payments), когда бюджет подходит к концу.
 
 ## Как считается
 
@@ -8,7 +8,7 @@
 оплачено клиентом            26 000 ₽
 − наша комиссия 10%          −2 600 ₽
 = бюджет на токены           23 400 ₽
-потрачено = расходы проекта OpenAI в $ с даты оплаты × (курс ЦБ × 1,08 ≈ курс Райфа)
+потрачено = расходы проекта OpenAI в $ с даты первого счёта × (курс ЦБ × 1,08 ≈ курс Райфа)
 остаток   = бюджет − потрачено
 ```
 
@@ -24,7 +24,7 @@
 3. **Секреты репозитория:** Settings → Secrets and variables → Actions → New repository secret:
    - `OPENAI_ADMIN_KEY` — Admin-ключ
    - `SLACK_WEBHOOK_URL` — вебхук
-4. **clients.json:** вписать `project_id` клиента, сумму и дату оплаты, свой Slack Member ID в `slack_mention` (профиль в Slack → «⋮» → Copy member ID).
+4. **clients.json:** вписать свой Slack Member ID в `slack_mention` (профиль в Slack → «⋮» → Copy member ID).
 5. **Проверка:** Actions → Billing monitor → Run workflow → `status`. В #ru_payments придёт текущий остаток.
 
 ## Админка (вкладка Actions)
