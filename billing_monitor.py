@@ -151,7 +151,7 @@ DEFAULT_TEMPLATES = {
         "Остаток: *{remaining}* → срочно выставить счёт"
     ),
     "message_status": (
-        ":information_source: *{name}*: потрачено {spent} из {budget} ({percent}), "
+        "{mention} :information_source: *{name}*: потрачено {spent} из {budget} ({percent}), "
         "осталось *{remaining}* (курс {rate})"
     ),
 }
