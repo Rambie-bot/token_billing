@@ -1,4 +1,4 @@
-name: "Админка: счёт выставлен / оплачен"
+name: "Админка: выставлен счёт"
 
 on:
   workflow_dispatch:
@@ -7,16 +7,11 @@ on:
         description: "Клиент (как в списке, например: Займер)"
         required: true
         default: "Займер"
-      action:
-        description: "Что произошло со счётом"
-        type: choice
-        options: ["выставлен", "оплачен"]
-        required: true
       amount:
         description: "Сумма счёта, ₽ (например 80000)"
         required: true
       date:
-        description: "Дата (12.11.2026). Пусто = сегодня"
+        description: "Дата выставления (12.11.2026). Пусто = сегодня"
         required: false
         default: ""
 
@@ -40,21 +35,19 @@ jobs:
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           IN_CLIENT: ${{ inputs.client }}
-          IN_ACTION: ${{ inputs.action == 'оплачен' && 'paid' || 'issued' }}
           IN_AMOUNT: ${{ inputs.amount }}
           IN_DATE: ${{ inputs.date }}
-        run: python3 admin.py invoice --client "$IN_CLIENT" --action "$IN_ACTION" --amount "$IN_AMOUNT" --date "$IN_DATE"
+        run: python3 admin.py invoice --client "$IN_CLIENT" --amount "$IN_AMOUNT" --date "$IN_DATE"
 
       - name: Save
         env:
           WHO: ${{ github.actor }}
           IN_CLIENT: ${{ inputs.client }}
-          IN_ACTION: ${{ inputs.action }}
           IN_AMOUNT: ${{ inputs.amount }}
         run: |
           git config user.name "billing-admin"
           git config user.email "billing-admin@users.noreply.github.com"
           git add clients.json
-          git commit -m "Счёт: $IN_CLIENT, $IN_ACTION, $IN_AMOUNT (by $WHO)"
+          git commit -m "Счёт: $IN_CLIENT, $IN_AMOUNT (by $WHO)"
           git pull --rebase origin main
           git push origin HEAD:main

@@ -134,27 +134,27 @@ def save_state(state):
 
 # ---------- Сообщения ----------
 # Плейсхолдеры: {mention} {name} {paid} {commission} {budget} {spent} {spent_usd}
-#               {rate} {remaining} {percent} {threshold} {period_start} {next_step} {pending_note}
+#               {rate} {remaining} {percent} {threshold} {period_start} {next_step} 
 # Свои шаблоны: "message_low" / "message_exhausted" в clients.json (в defaults или у клиента).
 
 DEFAULT_TEMPLATES = {
     "message_low": (
         "{mention} :warning: *{name}*: бюджет на токены подходит к концу\n"
-        "Оплачено {paid} ({period_start}), из них на токены {budget}\n"
+        "Счета с {period_start}: {paid}, из них на токены {budget}\n"
         "Потрачено: {spent} ({spent_usd}, курс {rate}) — {percent}\n"
         "Осталось: *{remaining}*\n"
         "{next_step}"
     ),
     "message_exhausted": (
         "{mention} :red_circle: *{name}*: бюджет на токены закончился\n"
-        "Оплачено {paid} ({period_start}), из них на токены {budget}\n"
+        "Счета с {period_start}: {paid}, из них на токены {budget}\n"
         "Потрачено: {spent} ({spent_usd}, курс {rate})\n"
         "Остаток: *{remaining}*\n"
         "{next_step}"
     ),
     "message_status": (
         "{mention} :information_source: *{name}*: потрачено {spent} из {budget} ({percent}), "
-        "осталось *{remaining}* (курс {rate}){pending_note}"
+        "осталось *{remaining}* (курс {rate})"
     ),
 }
 
@@ -174,15 +174,17 @@ def mention_str(client, defaults):
     return " ".join(f"<@{u}>" for u in ids if u)
 
 
-def paid_total(client):
-    """Сумма оплаченных счетов. Старый формат с prepaid_rub тоже поддерживается."""
+def invoiced_total(client):
+    """Сумма всех выставленных счетов (бюджет считается от выставления, а не от оплаты).
+    Старый формат с prepaid_rub тоже поддерживается."""
     if "invoices" in client:
-        return sum(float(i["amount_rub"]) for i in client["invoices"] if i.get("paid"))
+        return sum(float(i["amount_rub"]) for i in client["invoices"])
     return float(client.get("prepaid_rub", 0))
 
 
-def pending_invoices(client):
-    return [i for i in client.get("invoices", []) if not i.get("paid")]
+def last_invoice(client):
+    inv = client.get("invoices") or []
+    return inv[-1] if inv else None
 
 
 def ddmm(d):
@@ -190,7 +192,7 @@ def ddmm(d):
 
 
 def compute(client, defaults, usd):
-    paid = paid_total(client)
+    paid = invoiced_total(client)
     pct_fee = float(client.get("commission_pct", defaults.get("commission_pct", 0)))
     commission = paid * pct_fee / 100
     budget = paid - commission
@@ -205,17 +207,12 @@ def compute(client, defaults, usd):
 
 
 def render(tpl, client, defaults, r, threshold=0):
-    pend = pending_invoices(client)
-    pend_text = "; ".join(f"счёт на {fmt_rub(float(i['amount_rub']))} выставлен {ddmm(i['issued'])}" for i in pend)
-    if pend:
-        next_step = f":hourglass_flowing_sand: {pend_text[0].upper() + pend_text[1:]}, ждём оплату"
-    elif threshold <= 0:
+    if threshold <= 0:
         next_step = ":rotating_light: Срочно выставить новый счёт"
     else:
         next_step = ":receipt: Пора выставить новый счёт"
     return tpl.format(
         next_step=next_step,
-        pending_note=f"\n:hourglass_flowing_sand: {pend_text}, ждём оплату" if pend else "",
         mention=mention_str(client, defaults),
         name=client["name"],
         paid=fmt_rub(r["paid"]),
@@ -258,7 +255,7 @@ def main():
         r = compute(c, defaults, spent_usd.get(c["project_id"], 0.0))
         report.append(
             f"{c['name']}: ${r['usd']:.2f} × {r['rate']:.2f} ({r['rate_src']}) = {fmt_rub(r['spent'])} "
-            f"из бюджета {fmt_rub(r['budget'])} (оплачено {fmt_rub(r['paid'])}, комиссия {fmt_rub(r['commission'])}) "
+            f"из бюджета {fmt_rub(r['budget'])} (счета {fmt_rub(r['paid'])}, комиссия {fmt_rub(r['commission'])}) "
             f"→ осталось {fmt_rub(r['remaining'])}, {r['percent']:.0f}%"
         )
 
@@ -267,8 +264,6 @@ def main():
         fired = set(state.get(key, []))
         crossed = [t for t in thresholds if r["remaining"] <= t]
 
-        if r["paid"] == 0 and not force:
-            crossed = []  # клиент ещё ничего не оплатил — бюджета нет, тревожить рано
         if force:
             tpl = c.get("message_status") or defaults.get("message_status") or DEFAULT_TEMPLATES["message_status"]
             alerts.append(render(tpl, c, defaults, r))

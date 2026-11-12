@@ -2,8 +2,14 @@
   "defaults": {
     "commission_pct": 10,
     "cbr_multiplier": 1.08,
-    "alert_thresholds_rub": [5000, 0],
-    "slack_mention": ["U0AC5QCKPDF", "U0AL85CV9AM"]
+    "alert_thresholds_rub": [
+      5000,
+      0
+    ],
+    "slack_mention": [
+      "U0AC5QCKPDF",
+      "U0AL85CV9AM"
+    ]
   },
   "clients": [
     {
@@ -11,7 +17,10 @@
       "project_id": "proj_7VqULelGQ7AGF9xk7h7Smyxm",
       "period_start": "2026-11-01",
       "invoices": [
-        {"amount_rub": 26000, "issued": "2026-11-01", "paid": "2026-11-01"}
+        {
+          "amount_rub": 26000,
+          "issued": "2026-11-01"
+        }
       ]
     }
   ]

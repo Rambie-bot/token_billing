@@ -2,9 +2,11 @@
 """
 Админка: правит clients.json по формам из GitHub Actions и пишет подтверждение в Slack.
 
-  python3 admin.py invoice  --client "Займер" --action issued|paid --amount 80000 [--date 2026-11-12]
+  python3 admin.py invoice  --client "Займер" --amount 80000 [--date 2026-11-12]
   python3 admin.py add-client --name "Ромашка" --project-id proj_... --amount 26000 [--date 2026-11-12]
-                              [--paid yes|no] [--commission 10]
+                              [--commission 10]
+
+Бюджет клиента = сумма всех выставленных счетов (оплата на расчёт не влияет).
   python3 admin.py pause|resume --client "Займер"
 
 Переменные окружения: SLACK_WEBHOOK_URL (необязательно), CLIENTS_FILE (по умолчанию clients.json).
@@ -18,7 +20,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from billing_monitor import fmt_rub, http_post_json, paid_total, pending_invoices, ddmm
+from billing_monitor import fmt_rub, http_post_json, invoiced_total, ddmm
 
 CLIENTS_FILE = Path(os.getenv("CLIENTS_FILE", "clients.json"))
 MSK = timezone(timedelta(hours=3))
@@ -70,33 +72,27 @@ def migrate(client):
     """Старый формат (prepaid_rub) → список счетов."""
     if "invoices" not in client:
         amt = client.pop("prepaid_rub", 0)
-        client["invoices"] = [{"amount_rub": amt, "issued": client["period_start"], "paid": client["period_start"]}] if amt else []
+        client["invoices"] = [{"amount_rub": amt, "issued": client["period_start"]}] if amt else []
     return client
 
 
-def summary(c):
-    pend = pending_invoices(c)
-    s = f"Оплачено с {ddmm(c['period_start'])}: {fmt_rub(paid_total(c))}"
-    if pend:
-        s += "; ждём оплату: " + ", ".join(f"{fmt_rub(float(i['amount_rub']))} (от {ddmm(i['issued'])})" for i in pend)
-    return s
+def summary(c, fee):
+    total = invoiced_total(c)
+    return (f"Всего счетов с {ddmm(c['period_start'])}: {fmt_rub(total)}, "
+            f"бюджет на токены {fmt_rub(total * (1 - fee / 100))}")
+
+
+def fee_of(cfg, c):
+    return float(c.get("commission_pct", cfg.get("defaults", {}).get("commission_pct", 0)))
 
 
 def cmd_invoice(cfg, a):
     c = migrate(find_client(cfg, a.client))
     amount, date = norm_amount(a.amount), norm_date(a.date)
-    if a.action == "issued":
-        c["invoices"].append({"amount_rub": amount, "issued": date, "paid": None})
-        return f":receipt: *{c['name']}*: выставлен счёт на {fmt_rub(amount)} от {ddmm(date)}. Бюджет увеличится после оплаты.\n{summary(c)}"
-    # paid: закрываем ближайший неоплаченный счёт на эту сумму, иначе добавляем новый оплаченный
-    match = next((i for i in c["invoices"] if not i.get("paid") and float(i["amount_rub"]) == float(amount)), None)
-    if match:
-        match["paid"] = date
-    else:
-        c["invoices"].append({"amount_rub": amount, "issued": date, "paid": date})
-    fee = float(c.get("commission_pct", cfg.get("defaults", {}).get("commission_pct", 0)))
-    return (f":white_check_mark: *{c['name']}*: оплачен счёт на {fmt_rub(amount)} ({ddmm(date)}), "
-            f"на токены из него {fmt_rub(amount * (1 - fee / 100))}.\n{summary(c)}")
+    c["invoices"].append({"amount_rub": amount, "issued": date})
+    fee = fee_of(cfg, c)
+    return (f":receipt: *{c['name']}*: выставлен счёт на {fmt_rub(amount)} от {ddmm(date)}, "
+            f"на токены из него {fmt_rub(amount * (1 - fee / 100))}.\n{summary(c, fee)}")
 
 
 def cmd_add_client(cfg, a):
@@ -111,18 +107,16 @@ def cmd_add_client(cfg, a):
     if any(c["project_id"] == pid for c in cfg["clients"]):
         raise AdminError(f"Проект {pid} уже привязан к другому клиенту.")
     amount, date = norm_amount(a.amount), norm_date(a.date)
-    paid = (a.paid or "yes").lower() in ("yes", "да", "true", "1")
     client = {
         "name": name,
         "project_id": pid,
         "period_start": date,
-        "invoices": [{"amount_rub": amount, "issued": date, "paid": date if paid else None}],
+        "invoices": [{"amount_rub": amount, "issued": date}],
     }
     if a.commission not in (None, ""):
         client["commission_pct"] = float(a.commission)
     cfg["clients"].append(client)
-    note = "" if paid else " Счёт пока не оплачен — бюджет 0 ₽ до оплаты."
-    return f":new: Добавлен клиент *{name}* ({pid}), счёт на {fmt_rub(amount)} от {ddmm(date)}.{note}\n{summary(client)}"
+    return f":new: Добавлен клиент *{name}* ({pid}), счёт на {fmt_rub(amount)} от {ddmm(date)}.\n{summary(client, fee_of(cfg, client))}"
 
 
 def cmd_pause(cfg, a, enabled):
@@ -136,7 +130,6 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     i = sub.add_parser("invoice")
     i.add_argument("--client", required=True)
-    i.add_argument("--action", choices=["issued", "paid"], required=True)
     i.add_argument("--amount", required=True)
     i.add_argument("--date", default="")
     n = sub.add_parser("add-client")
@@ -144,7 +137,6 @@ def main():
     n.add_argument("--project-id", required=True)
     n.add_argument("--amount", required=True)
     n.add_argument("--date", default="")
-    n.add_argument("--paid", default="yes")
     n.add_argument("--commission", default="")
     for name in ("pause", "resume"):
         x = sub.add_parser(name)

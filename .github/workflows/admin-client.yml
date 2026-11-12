@@ -12,13 +12,8 @@ on:
       amount:
         description: "Сумма первого счёта, ₽"
         required: true
-      paid:
-        description: "Счёт уже оплачен?"
-        type: choice
-        options: ["да", "нет"]
-        default: "да"
       date:
-        description: "Дата оплаты/выставления (12.11.2026). Пусто = сегодня"
+        description: "Дата выставления первого счёта (12.11.2026). Пусто = сегодня"
         required: false
         default: ""
       commission:
@@ -48,10 +43,9 @@ jobs:
           IN_NAME: ${{ inputs.name }}
           IN_PID: ${{ inputs.project_id }}
           IN_AMOUNT: ${{ inputs.amount }}
-          IN_PAID: ${{ inputs.paid }}
           IN_DATE: ${{ inputs.date }}
           IN_FEE: ${{ inputs.commission }}
-        run: python3 admin.py add-client --name "$IN_NAME" --project-id "$IN_PID" --amount "$IN_AMOUNT" --paid "$IN_PAID" --date "$IN_DATE" --commission "$IN_FEE"
+        run: python3 admin.py add-client --name "$IN_NAME" --project-id "$IN_PID" --amount "$IN_AMOUNT" --date "$IN_DATE" --commission "$IN_FEE"
 
       - name: Save
         env:
