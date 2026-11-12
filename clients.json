@@ -9,8 +9,10 @@
     {
       "name": "Займер",
       "project_id": "proj_7VqULelGQ7AGF9xk7h7Smyxm",
-      "prepaid_rub": 26000,
-      "period_start": "2026-11-01"
+      "period_start": "2026-11-01",
+      "invoices": [
+        {"amount_rub": 26000, "issued": "2026-11-01", "paid": "2026-11-01"}
+      ]
     }
   ]
 }
