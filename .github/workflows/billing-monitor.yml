@@ -1,0 +1,56 @@
+name: Billing monitor
+
+on:
+  schedule:
+    # каждый день в 09:07 UTC = 12:07 МСК = 16:07 Бангкок
+    - cron: "7 9 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "normal — как по расписанию; status — прислать текущий статус в Slack; dry — только отчёт в лог"
+        type: choice
+        options: [normal, status, dry]
+        default: normal
+
+permissions:
+  contents: write
+
+concurrency:
+  group: billing-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run monitor
+        env:
+          OPENAI_ADMIN_KEY: ${{ secrets.OPENAI_ADMIN_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          FORCE_ALERT: ${{ github.event.inputs.mode == 'status' && '1' || '0' }}
+          DRY_RUN: ${{ github.event.inputs.mode == 'dry' && '1' || '0' }}
+        run: python3 billing_monitor.py clients.json
+
+      - name: Save state
+        run: |
+          if [ -f state.json ] && [ -n "$(git status --porcelain state.json)" ]; then
+            git config user.name "billing-monitor"
+            git config user.email "billing-monitor@users.noreply.github.com"
+            git add state.json
+            git commit -m "update alert state"
+            git push
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 -c "import json,os,urllib.request; urllib.request.urlopen(urllib.request.Request(os.environ['SLACK_WEBHOOK_URL'], data=json.dumps({'text': ':x: Billing monitor упал, посмотрите лог: ' + os.environ['RUN_URL']}).encode(), headers={'Content-Type': 'application/json'}))"
